@@ -1,0 +1,1 @@
+{"statusCode":200,"headers":{"Content-Type":"application/json","Access-Control-Allow-Origin":"*"},"body":"{\"message\":\"Hello World from AWS Lambda! 🚀\",\"timestamp\":\"2025-12-14T20:46:43.326Z\",\"requestId\":\"f135f9dc-3e3a-4a7d-9fa9-2357c6cccf26\",\"functionName\":\"AwsDemoStack-HelloLambdaFunction3DCA9067-jaA73pZJTAvO\",\"region\":\"eu-north-1\"}"}
