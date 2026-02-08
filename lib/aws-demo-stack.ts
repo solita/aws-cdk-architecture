@@ -1,7 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 
 export class AwsDemoStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -10,18 +9,11 @@ export class AwsDemoStack extends cdk.Stack {
     // ✅ TASK 1: Hello World CDK Stack
     // This demonstrates basic CDK concepts: Stacks, Constructs, and App
     
-    // Create our Hello World Lambda function using NodejsFunction
-    // This automatically bundles and compiles TypeScript code!
-    const helloLambda = new NodejsFunction(this, 'HelloLambdaFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,  // Use Node.js 20 (latest LTS)
-      entry: 'lambda/hello.ts',             // Path to your TypeScript file
-      handler: 'handler',                   // Function name (just 'handler', not 'hello.handler')
-      bundling: {
-        minify: true,                       // Minify the code
-        sourceMap: true,                    // Include source maps for debugging
-        target: 'es2020',                   // JavaScript target version
-        externalModules: ['aws-sdk'],       // Don't bundle AWS SDK (already in Lambda)
-      },
+    // Lambda function in Python
+    const helloLambda = new lambda.Function(this, 'HelloLambdaFunction', {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'app.handler',
+      code: lambda.Code.fromAsset('lambda_py'),
     });
 
     // 🏷️ Add tags to all resources in this stack
