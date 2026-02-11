@@ -1,4 +1,5 @@
 {
+  "toolkitStackName": "CDKkitDrashtii",
   "app": "npx ts-node --prefer-ts-exts bin/aws-demo.ts",
   "watch": {
     "include": ["**"],
@@ -15,6 +16,7 @@
     ]
   },
   "context": {
+    "@aws-cdk/core:bootstrapQualifier": "drashtii03",
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
