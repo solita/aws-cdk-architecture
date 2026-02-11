@@ -30,7 +30,7 @@ export class AwsDemoStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'app.handler',
       code: lambda.Code.fromAsset('lambda_py'),
-      logRetention: logs.RetentionDays.ONE_WEEK,
+      logRetention: logs.RetentionDays.ONE_DAY,
       timeout: cdk.Duration.seconds(30),
     });
 
@@ -46,7 +46,7 @@ export class AwsDemoStack extends cdk.Stack {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       tableName: 'Items',
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.RETAIN, // DESTROY is NOT recommended for production code
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // DESTROY is NOT recommended for production code
     });
     itemsTable.grantReadWriteData(helloLambda);
     helloLambda.addEnvironment('TABLE_NAME', itemsTable.tableName);
@@ -107,6 +107,84 @@ export class AwsDemoStack extends cdk.Stack {
       alarmName: 'DemoApp-API-High-Latency',
     });
     apiLatencyAlarm.addAlarmAction(new cloudwatch_actions.SnsAction(alarmSNS));
+
+    // AWS Budget
+    new budgets.CfnBudget(this, 'MonthlyBudget', {
+      budget: {
+        budgetName: 'AWS-Demo-Monthly-Budget',
+        budgetType: 'COST',
+        timeUnit: 'MONTHLY',
+        budgetLimit: {
+          amount: 10,
+          unit: 'USD',
+        },
+        costFilters: {
+          TagKeyValue: [`user:Owner$DrashtiJaasani`],
+        },
+      },
+      notificationsWithSubscribers: [
+        {
+          notification: {
+            notificationType: 'ACTUAL',
+            comparisonOperator: 'GREATER_THAN',
+            threshold: 80,
+            thresholdType: 'PERCENTAGE',
+          },
+          subscribers: [
+            {
+              subscriptionType: 'EMAIL',
+              address: 'drashti.jasani@solita.fi',
+            },
+          ],
+        },
+        {
+          notification: {
+            notificationType: 'FORECASTED',
+            comparisonOperator: 'GREATER_THAN',
+            threshold: 100,
+            thresholdType: 'PERCENTAGE',
+          },
+          subscribers: [
+            {
+              subscriptionType: 'EMAIL',
+              address: 'drashti.jasani@solita.fi',
+            },
+          ],
+        },
+      ],
+    });
+
+    // // ========================================
+    // // 🧪 TEST BUDGET - Will trigger immediately!
+    // // ========================================
+    // new budgets.CfnBudget(this, 'TestBudget', {
+    //   budget: {
+    //     budgetName: 'TEST-Budget-Alert',
+    //     budgetType: 'COST',
+    //     timeUnit: 'MONTHLY',
+    //     budgetLimit: {
+    //       amount: 0.01, // $0.01 - will trigger immediately
+    //       unit: 'USD',
+    //     },
+    //     // No cost filters - tracks ALL spending in account
+    //   },
+    //   notificationsWithSubscribers: [
+    //     {
+    //       notification: {
+    //         notificationType: 'ACTUAL',
+    //         comparisonOperator: 'GREATER_THAN',
+    //         threshold: 1, // Alert at just 1% of $0.01 (basically immediate)
+    //         thresholdType: 'PERCENTAGE',
+    //       },
+    //       subscribers: [
+    //         {
+    //           subscriptionType: 'EMAIL',
+    //           address: 'drashti.jasani@solita.fi',
+    //         },
+    //       ],
+    //     },
+    //   ],
+    // });
 
     // 🏷️ Add tags to all resources in this stack
     cdk.Tags.of(this).add('Owner', 'DrashtiJaasani');
