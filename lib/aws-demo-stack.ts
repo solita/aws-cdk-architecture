@@ -28,13 +28,34 @@ export class AwsDemoStack extends cdk.Stack {
       new subscriptions.EmailSubscription("drashti.jasani@solita.fi"),
     );
 
-    // Lambda function in Python
-    const helloLambda = new lambda.Function(this, "HelloLambdaFunction", {
+    // Lambda function for listing items
+    const listItemsLambda = new lambda.Function(this, "ListItemsFunction", {
       runtime: lambda.Runtime.PYTHON_3_12,
-      handler: "app.handler",
+      handler: "list_items.handler",
       code: lambda.Code.fromAsset("lambda_py"),
       logRetention: logs.RetentionDays.ONE_DAY,
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(10),
+      description: "List all items from DynamoDB",
+    });
+
+    // Lambda function for creating items
+    const createItemLambda = new lambda.Function(this, "CreateItemFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "create_item.handler",
+      code: lambda.Code.fromAsset("lambda_py"),
+      logRetention: logs.RetentionDays.ONE_DAY,
+      timeout: cdk.Duration.seconds(10),
+      description: "Create new item in DynamoDB",
+    });
+
+    // Lambda function for secrets test
+    const secretsTestLambda = new lambda.Function(this, "SecretsTestFunction", {
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "secrets_test.handler",
+      code: lambda.Code.fromAsset("lambda_py"),
+      logRetention: logs.RetentionDays.ONE_DAY,
+      timeout: cdk.Duration.seconds(10),
+      description: "Test retrieval of secrets from Secrets Manager",
     });
 
     const api = new apigw.RestApi(this, "DemoApi", {
@@ -79,59 +100,74 @@ export class AwsDemoStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY, // DESTROY is NOT recommended for production code
     });
 
-    itemsTable.grantReadWriteData(helloLambda);
-    helloLambda.addEnvironment("TABLE_NAME", itemsTable.tableName);
+    // Grant DynamoDB permissions to list and create functions only
+    itemsTable.grantReadData(listItemsLambda);
+    listItemsLambda.addEnvironment("TABLE_NAME", itemsTable.tableName);
 
-    // Grant Lambda permission to read secrets
-    apiKeySecret.grantRead(helloLambda);
-    dbCredentials.grantRead(helloLambda);
-    // Pass secret ARNs to Lambda via environment variables
-    helloLambda.addEnvironment("API_KEY_SECRET_ARN", apiKeySecret.secretArn);
-    helloLambda.addEnvironment(
+    itemsTable.grantWriteData(createItemLambda);
+    createItemLambda.addEnvironment("TABLE_NAME", itemsTable.tableName);
+
+    // Grant secrets permissions to secrets test function only
+    apiKeySecret.grantRead(secretsTestLambda);
+    dbCredentials.grantRead(secretsTestLambda);
+    secretsTestLambda.addEnvironment(
+      "API_KEY_SECRET_ARN",
+      apiKeySecret.secretArn,
+    );
+    secretsTestLambda.addEnvironment(
       "DB_CREDENTIALS_SECRET_ARN",
       dbCredentials.secretArn,
     );
 
-    const lambdaIntegration = new apigw.LambdaIntegration(helloLambda);
-    api.root.addMethod("GET", lambdaIntegration); // GET
-    api.root.addMethod("POST", lambdaIntegration); // POST
-    // Add secrets-test route
-    const secretsTestResource = api.root.addResource('secrets-test');
-    secretsTestResource.addMethod('GET', lambdaIntegration);
+    // API Gateway integrations - each endpoint to dedicated Lambda
+    const listIntegration = new apigw.LambdaIntegration(listItemsLambda);
+    const createIntegration = new apigw.LambdaIntegration(createItemLambda);
+    const secretsIntegration = new apigw.LambdaIntegration(secretsTestLambda);
 
-    // Alarm: Lambda Errors
-    const lambdaErrorAlarm = new cloudwatch.Alarm(this, "LambdaErrorAlarm", {
-      metric: helloLambda.metricErrors({
+    api.root.addMethod("GET", listIntegration);
+    api.root.addMethod("POST", createIntegration);
+
+    const secretsTestResource = api.root.addResource("secrets-test");
+    secretsTestResource.addMethod("GET", secretsIntegration);
+
+    // Alarms for List Items Lambda
+    new cloudwatch.Alarm(this, "ListItemsErrorAlarm", {
+      metric: listItemsLambda.metricErrors({
         period: cdk.Duration.minutes(5),
         statistic: "Sum",
       }),
-      threshold: 1, // Alert if ANY error occurs
+      threshold: 1,
       evaluationPeriods: 1,
-      alarmDescription: "Alert when Lambda function has errors",
-      alarmName: "DemoApp-Lambda-Errors",
+      alarmDescription: "Alert when ListItems function has errors",
+      alarmName: "DemoApp-ListItems-Errors",
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-    });
-    lambdaErrorAlarm.addAlarmAction(new cloudwatch_actions.SnsAction(alarmSNS));
+    }).addAlarmAction(new cloudwatch_actions.SnsAction(alarmSNS));
 
-    // Alarm: Lambda Throttles
-    const lambdaThrottleAlarm = new cloudwatch.Alarm(
-      this,
-      "LambdaThrottleAlarm",
-      {
-        metric: helloLambda.metricThrottles({
-          period: cdk.Duration.minutes(5),
-          statistic: "Sum",
-        }),
-        threshold: 1,
-        evaluationPeriods: 1,
-        alarmDescription:
-          "Alert when Lambda is throttled (hitting concurrency limits)",
-        alarmName: "DemoApp-Lambda-Throttles",
-      },
-    );
-    lambdaThrottleAlarm.addAlarmAction(
-      new cloudwatch_actions.SnsAction(alarmSNS),
-    );
+    // Alarms for Create Item Lambda
+    new cloudwatch.Alarm(this, "CreateItemErrorAlarm", {
+      metric: createItemLambda.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: "Sum",
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      alarmDescription: "Alert when CreateItem function has errors",
+      alarmName: "DemoApp-CreateItem-Errors",
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(new cloudwatch_actions.SnsAction(alarmSNS));
+
+    // Alarms for Secrets Test Lambda
+    new cloudwatch.Alarm(this, "SecretsTestErrorAlarm", {
+      metric: secretsTestLambda.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: "Sum",
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      alarmDescription: "Alert when SecretsTest function has errors",
+      alarmName: "DemoApp-SecretsTest-Errors",
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(new cloudwatch_actions.SnsAction(alarmSNS));
 
     // Alarm: API Gateway 5xx Errors
     const api5xxAlarm = new cloudwatch.Alarm(this, "Api5xxAlarm", {
@@ -248,9 +284,19 @@ export class AwsDemoStack extends cdk.Stack {
       description: "The URL of the API Gateway endpoint",
     });
 
-    new cdk.CfnOutput(this, "HelloLambdaFunctionName", {
-      value: helloLambda.functionName,
-      description: "The name of the Hello Lambda function",
+    new cdk.CfnOutput(this, "ListItemsFunctionName", {
+      value: listItemsLambda.functionName,
+      description: "List Items Lambda function name",
+    });
+
+    new cdk.CfnOutput(this, "CreateItemFunctionName", {
+      value: createItemLambda.functionName,
+      description: "Create Item Lambda function name",
+    });
+
+    new cdk.CfnOutput(this, "SecretsTestFunctionName", {
+      value: secretsTestLambda.functionName,
+      description: "Secrets Test Lambda function name",
     });
 
     // Add a CloudFormation output - our "Hello World"
